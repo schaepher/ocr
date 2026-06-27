@@ -55,7 +55,7 @@ func TestMarkdown(t *testing.T) {
 
 func TestHTML(t *testing.T) {
 	doc := testDoc()
-	got, err := HTML(doc)
+	got, err := HTML(doc, "test.png")
 	if err != nil {
 		t.Fatalf("HTML() error: %v", err)
 	}

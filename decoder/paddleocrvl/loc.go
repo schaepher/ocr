@@ -4,6 +4,7 @@ import (
 	"image"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/schaepher/paddleocrvl/decoder"
 	"github.com/schaepher/paddleocrvl/document"
@@ -30,7 +31,7 @@ func parseRaw(raw string, imgSize image.Point) (*document.Document, error) {
 			Width:  imgSize.X,
 			Height: imgSize.Y,
 			Blocks: []document.Block{
-				{Text: raw},
+				{Text: strings.TrimSpace(raw)},
 			},
 		}, nil
 	}
@@ -98,6 +99,7 @@ func buildBlocks(segments []string, tokens []int, imgSize image.Point) []documen
 	tokenPos := 0
 
 	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
 		if seg == "" {
 			continue
 		}

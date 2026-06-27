@@ -15,7 +15,7 @@ func Markdown(doc *document.Document) (string, error) {
 		if blk.Text == "" {
 			continue
 		}
-		b.WriteString(strings.TrimSpace(blk.Text))
+		b.WriteString(blk.Text)
 		if i < len(doc.Blocks)-1 {
 			b.WriteString("\n\n")
 		}

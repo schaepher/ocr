@@ -82,13 +82,13 @@ func (p *Pipeline) Run(ctx context.Context) (*document.Document, error) {
 		return nil, fmt.Errorf("pipeline: encode image: %w", err)
 	}
 
-	sysPrompt := p.prompt
-	if sysPrompt == "" {
-		sysPrompt = prompt.SpottingSystemPrompt
+	userPrompt := p.prompt
+	if userPrompt == "" {
+		userPrompt = prompt.SpottingSystemPrompt
 	}
 
 	// 2. Send API request.
-	req := client.BuildVisionRequest("", sysPrompt, "OCR the image.", imageURI)
+	req := client.BuildVisionRequest("", "", userPrompt, imageURI)
 	raw, err := p.cl.Chat(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)
@@ -138,12 +138,12 @@ func (p *Pipeline) RunWithReader(ctx context.Context, r io.Reader, imagePath str
 	encoded := encodeBase64(data)
 	imageURI := fmt.Sprintf("data:%s;base64,%s", mimeType, encoded)
 
-	sysPrompt := p.prompt
-	if sysPrompt == "" {
-		sysPrompt = prompt.SpottingSystemPrompt
+	userPrompt := p.prompt
+	if userPrompt == "" {
+		userPrompt = prompt.SpottingSystemPrompt
 	}
 
-	req := client.BuildVisionRequest("", sysPrompt, "OCR the image.", imageURI)
+	req := client.BuildVisionRequest("", "", userPrompt, imageURI)
 	raw, err := p.cl.Chat(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)

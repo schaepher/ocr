@@ -23,8 +23,8 @@ import (
 //
 //	fmt.Println(doc.Markdown())
 type Client struct {
-	baseURL    string
-	model      string
+	baseURL      string
+	model        string
 	systemPrompt string
 }
 
@@ -111,8 +111,9 @@ func JSON(doc *document.Document) (string, error) {
 }
 
 // HTML renders the document as positioned HTML.
-func HTML(doc *document.Document) (string, error) {
-	return output.HTML(doc)
+// imageSrc is used as the src attribute of the background <img> tag.
+func HTML(doc *document.Document, imageSrc string) (string, error) {
+	return output.HTML(doc, imageSrc)
 }
 
 // Text renders the document as plain text.
