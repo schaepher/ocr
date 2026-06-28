@@ -30,6 +30,7 @@ func main() {
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
+	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing)")
 	flag.Parse()
 
 	var prov provider.Provider
@@ -56,7 +57,7 @@ func main() {
 		if outPath == "" {
 			outPath = deriveOutPath(*imagePath, *format)
 		}
-		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format); err != nil {
+		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -88,7 +89,7 @@ func main() {
 			outPath := deriveOutPath(imgPath, *format)
 			n := done.Add(1)
 			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format); err != nil {
+			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 			}
 		}(img)
@@ -97,11 +98,17 @@ func main() {
 	fmt.Printf("Done: %d files processed.\n", total)
 }
 
-func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string) error {
-	doc, err := ocr.New(prov).
+func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight int) error {
+	cli := ocr.New(prov).
 		LMStudio(baseURL).
 		Model(model).
-		ParseImage(context.Background(), imagePath)
+		MaxHeight(maxHeight)
+	if maxHeight > 0 {
+		cli = cli.OnProgress(func(cur, total, y int) {
+			fmt.Printf("  slice [%d/%d] y=%d\n", cur, total, y)
+		})
+	}
+	doc, err := cli.ParseImage(context.Background(), imagePath)
 	if err != nil {
 		return fmt.Errorf("OCR: %w", err)
 	}
