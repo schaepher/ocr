@@ -46,11 +46,14 @@ def generate_html(blocks, image_width, image_height, image_src):
         "transition: background 0.15s, box-shadow 0.15s; }\n"
     )
     parts.append(
-        ".ocr-block text { fill: transparent; transition: fill 0.15s; "
+        ".ocr-block text { fill: rgba(255,0,0,0.7); transition: fill 0.15s; "
         "font-family: sans-serif; }\n"
     )
     parts.append(
-        ".ocr-block:hover { background: rgba(255,255,255,0.85); "
+        ".ocr-block { background: rgba(0,255,0,0.08); }"
+    )
+    parts.append(
+        ".ocr-block:hover { background: rgba(255,255,255,0.9); "
         "box-shadow: 0 1px 6px rgba(0,0,0,0.25); z-index: 1; }\n"
     )
     parts.append(".ocr-block:hover text { fill: #000; }\n")

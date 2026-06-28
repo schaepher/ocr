@@ -87,11 +87,54 @@ for i in range(len(r['rec_texts'])):
     })
 ```
 
+## ⚠️ 大图坐标漂移 Bug
+
+当图片任一边超过 `max_side_limit`（默认 4000px）时，PaddleOCR 内部会对整图做 resize 后再检测，然后将坐标映射回原始空间。**这个映射过程存在系统性误差**，导致所有文本块的 Y 坐标产生偏移。
+
+实测数据（1080×22572 超长图）：
+- 全图 OCR：174 块，**174/174 块的 Y 坐标均有偏移**，最大偏移 248px
+- 切片 OCR：182 块（多检出 8 块），坐标准确
+
+### 解决方案：预切片
+
+```python
+from PIL import Image
+
+SLICE_HEIGHT = 3800  # < 4000 避免触发 resize
+OVERLAP = 200        # 切片间重叠，防止跨边界文本被截断
+
+img = Image.open("large_image.jpg")
+ocr = PaddleOCR(use_textline_orientation=True, lang='ch', enable_mkldnn=False)
+
+all_blocks = []
+y = 0
+while y < img.height:
+    y_end = min(y + SLICE_HEIGHT + OVERLAP, img.height)
+    crop = img.crop((0, y, img.width, y_end))
+    crop.save("_slice.jpg")
+    r = ocr.predict("_slice.jpg")[0]
+
+    for j in range(len(r['rec_texts'])):
+        bbox = r['dt_polys'][j].tolist()
+        for pt in bbox:
+            pt[1] += y  # 偏移到全局坐标
+        all_blocks.append({
+            'bbox': bbox,
+            'text': r['rec_texts'][j],
+            'confidence': r['rec_scores'][j]
+        })
+    y += SLICE_HEIGHT
+```
+
 ## 验证记录
 
 测试图片：`~/Pictures/ocr/long.jpg`（1080×22572 超长微信公众号文章截图）
 
-- 检测文本区域：174 个
+| 方法 | 文本块数 | Y 坐标准确性 |
+|------|---------|-------------|
+| 全图 OCR（触发 resize） | 174 | **全部偏移**（最大 248px） |
+| 切片 OCR（6 片 × 3800px） | 182 | 准确 ✓ |
+
 - 识别准确率：大部分 0.99+，中文识别效果良好
 - 首次运行自动下载模型到 `~/.paddlex/official_models/`（约需下载 5 个模型文件）
 
