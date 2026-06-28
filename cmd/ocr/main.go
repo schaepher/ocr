@@ -31,7 +31,7 @@ func main() {
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
-	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing; default 3800 for paddleocrpy)")
+	maxHeight := flag.Int("max-height", 3800, "max image height before slicing (0=no slicing; default 3800 for paddleocrpy)")
 	page := flag.Int("page", 0, "only OCR this page (1-based slice index; 0=all)")
 	overlap := flag.Int("overlap", 200, "vertical overlap between slices in pixels")
 	saveSlices := flag.Bool("save-slices", false, "save slice JPEGs and per-slice raw.json/html to a subdirectory")
