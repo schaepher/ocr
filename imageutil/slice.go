@@ -3,12 +3,15 @@ package imageutil
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
+	"path/filepath"
+	"strings"
 
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
@@ -91,6 +94,29 @@ func SliceImage(path string, maxHeight, overlap int) ([]Slice, int, int, error) 
 	}
 
 	return slices, imgW, imgH, nil
+}
+
+// SaveSlices writes slices to a subdirectory next to the original image.
+// The directory is named after the image file (without extension).
+// Files are named 001.jpg, 002.jpg, etc.
+// Returns the directory path.
+func SaveSlices(slices []Slice, imagePath string, maxHeight, overlap int) (string, error) {
+	ext := filepath.Ext(imagePath)
+	base := strings.TrimSuffix(filepath.Base(imagePath), ext)
+	dir := filepath.Join(filepath.Dir(imagePath), base)
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create slice dir %s: %w", dir, err)
+	}
+
+	for i, sl := range slices {
+		name := filepath.Join(dir, fmt.Sprintf("%03d.jpg", i+1))
+		if err := os.WriteFile(name, sl.Data, 0644); err != nil {
+			return "", fmt.Errorf("write slice %s: %w", name, err)
+		}
+	}
+
+	return dir, nil
 }
 
 // cropImage extracts a sub-image from img.

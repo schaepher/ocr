@@ -32,6 +32,7 @@ func main() {
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
 	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing; default 3800 for paddleocrpy)")
+	page := flag.Int("page", 0, "only OCR this page (1-based slice index; 0=all)")
 	overlap := flag.Int("overlap", 200, "vertical overlap between slices in pixels")
 	raw := flag.Bool("raw", true, "save raw model output to .raw.json; replay if exists")
 	flag.Parse()
@@ -66,14 +67,14 @@ func main() {
 			outPath = deriveOutPath(*imagePath, *format)
 		}
 		if *provName == "paddleocrpy" {
-			if err := processImagePaddleOCR(ctx, *imagePath, outPath, *format, *maxHeight, *overlap); err != nil {
+			if err := processImagePaddleOCR(ctx, *imagePath, outPath, *format, *maxHeight, *page, *overlap); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
 			fmt.Printf("Output written to %s\n", outPath)
 			return
 		}
-		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *raw); err != nil {
+		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -106,7 +107,7 @@ func main() {
 				outPath := deriveOutPath(imgPath, *format)
 				n := done.Add(1)
 				fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-				if err := processImagePaddleOCR(ctx, imgPath, outPath, *format, *maxHeight, *overlap); err != nil {
+				if err := processImagePaddleOCR(ctx, imgPath, outPath, *format, *maxHeight, *page, *overlap); err != nil {
 					fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 				}
 			}(img)
@@ -125,7 +126,7 @@ func main() {
 			outPath := deriveOutPath(imgPath, *format)
 			n := done.Add(1)
 			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight, *raw); err != nil {
+			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 			}
 		}(img)
@@ -134,11 +135,12 @@ func main() {
 	fmt.Printf("Done: %d files processed.\n", total)
 }
 
-func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight int, raw bool) error {
+func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight, page int, raw bool) error {
 	cli := ocr.New(prov).
 		LMStudio(baseURL).
 		Model(model).
-		MaxHeight(maxHeight)
+		MaxHeight(maxHeight).
+		Page(page)
 	if maxHeight > 0 {
 		cli = cli.OnProgress(func(cur, total, y int) {
 			fmt.Printf("  slice [%d/%d] y=%d\n", cur, total, y)
@@ -174,10 +176,48 @@ func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, fo
 		return fmt.Errorf("output: %w", err)
 	}
 
+	// Generate per-slice HTML from individual raw.json caches.
+	if maxHeight > 0 && format == "html" {
+		ext := filepath.Ext(imagePath)
+		base := strings.TrimSuffix(filepath.Base(imagePath), ext)
+		sliceDir := filepath.Join(filepath.Dir(imagePath), base)
+		if entries, err := os.ReadDir(sliceDir); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".raw.json") {
+					sliceRaw := filepath.Join(sliceDir, e.Name())
+					baseName := strings.TrimSuffix(e.Name(), ".raw.json")
+					sliceImg := filepath.Join(sliceDir, baseName+".jpg")
+					sliceHTML := filepath.Join(sliceDir, baseName+".html")
+					genSliceHTML(prov, sliceRaw, sliceImg, sliceHTML, baseURL, model, maxHeight)
+				}
+			}
+		}
+	}
+
 	return os.WriteFile(outPath, []byte(out), 0644)
 }
 
-func processImagePaddleOCR(ctx context.Context, imagePath, outPath, format string, maxHeight, overlap int) error {
+// genSliceHTML replays a per-slice raw.json and generates an HTML overlay.
+func genSliceHTML(prov provider.Provider, rawPath, imgPath, htmlPath, baseURL, model string, maxHeight int) {
+	cli := ocr.New(prov).
+		LMStudio(baseURL).
+		Model(model).
+		MaxHeight(maxHeight).
+		Debug(rawPath)
+	doc, err := cli.ParseImage(context.Background(), imgPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  slice html %s: %v\n", filepath.Base(rawPath), err)
+		return
+	}
+	htmlStr, err := ocr.HTML(doc, filepath.Base(imgPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  slice html %s: %v\n", filepath.Base(rawPath), err)
+		return
+	}
+	os.WriteFile(htmlPath, []byte(htmlStr), 0644)
+}
+
+func processImagePaddleOCR(ctx context.Context, imagePath, outPath, format string, maxHeight, page, overlap int) error {
 	if maxHeight <= 0 {
 		maxHeight = 3800 // default to avoid resize distortion
 	}

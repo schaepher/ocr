@@ -18,6 +18,7 @@ import (
 	"image"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/schaepher/ocr/client"
 	"github.com/schaepher/ocr/document"
@@ -61,6 +62,7 @@ type Client struct {
 	systemPrompt string
 	maxHeight    int // 0 means no slicing
 	overlap      int
+	page         int // 1-based page to OCR, 0 means all
 	onProgress   ProgressFunc
 	debugPath    string
 	maxRetries   int
@@ -75,7 +77,7 @@ func New(p provider.Provider) *Client {
 		model:        p.DefaultModel(),
 		systemPrompt: p.SystemPrompt(),
 		overlap:      200,
-		maxRetries:   3,
+		maxRetries:   5,
 	}
 }
 
@@ -114,6 +116,12 @@ func (c *Client) MaxRetries(n int) *Client {
 // Overlap sets the vertical overlap between adjacent slices.
 func (c *Client) Overlap(px int) *Client {
 	c.overlap = px
+	return c
+}
+
+// Page sets which page (1-based slice index) to OCR. 0 means all pages.
+func (c *Client) Page(n int) *Client {
+	c.page = n
 	return c
 }
 
@@ -179,17 +187,51 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		return doc, nil
 	}
 
+	// Save slices to subdirectory named after the image (without extension).
+	sliceDir, err := imageutil.SaveSlices(slices, imagePath, c.maxHeight, c.overlap)
+	if err != nil {
+		return nil, fmt.Errorf("save slices: %w", err)
+	}
+
+	// Determine which slice indices to process.
+	start, end := 0, len(slices)
+	if c.page > 0 {
+		// --page is 1-based.
+		start = c.page - 1
+		end = c.page
+		if start >= len(slices) {
+			return nil, fmt.Errorf("page %d out of range (1-%d)", c.page, len(slices))
+		}
+	}
+
 	var allBlocks []document.Block
 	var entries []rawEntry
-	for i, sl := range slices {
+	combinedDebugPath := c.debugPath // original combined raw.json path
+	for i := start; i < end; i++ {
+		sl := slices[i]
+		pageNum := i + 1
 		if c.onProgress != nil {
-			c.onProgress(i+1, len(slices), sl.Y)
+			c.onProgress(pageNum, len(slices), sl.Y)
 		}
+		slicePath := filepath.Join(sliceDir, fmt.Sprintf("%03d.jpg", pageNum))
+
+		// Per-slice debug path: each slice gets its own .raw.json.
+		sliceDebugPath := slicePath[:len(slicePath)-4] + ".raw.json"
+
 		sliceSize := image.Point{X: imgW, Y: sl.Height}
-		doc, raw, err := c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i), sliceSize)
+		doc, raw, err := c.parseOne(ctx, slicePath, sliceSize)
+
+		// Save per-slice raw.json (independent replay unit).
+		if sliceDebugPath != "" {
+			origPath := c.debugPath
+			c.debugPath = sliceDebugPath
+			c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: sl.Height, Raw: raw}}, imgW, sl.Height)
+			c.debugPath = origPath
+		}
+
 		if err != nil {
-			// Save partial results before returning error.
 			entries = append(entries, rawEntry{Index: i, Y: sl.Y, Height: sl.Height, Raw: raw})
+			c.debugPath = combinedDebugPath
 			c.saveDebug(entries, imgW, imgH)
 			return nil, fmt.Errorf("slice %d: %w", i, err)
 		}
@@ -203,8 +245,11 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 			allBlocks = append(allBlocks, blk)
 		}
 	}
+	c.debugPath = combinedDebugPath
 	c.saveDebug(entries, imgW, imgH)
 
+	// For single-page, return only that page's blocks without Y adjustment.
+	// The coordinates are relative to the slice, which is correct for the page.
 	doc := &document.Document{Width: imgW, Height: imgH, Blocks: allBlocks}
 	doc, err = layout.Sort()(doc)
 	return doc, err
