@@ -267,7 +267,7 @@ func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Docu
 			PostProcess(layout.Sort()).
 			Image(imagePath)
 		prompt := c.systemPrompt
-		if attempt > 0 {
+		if attempt >= 0 {
 			prompt += locFormatReminder
 			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
 		}
@@ -279,7 +279,7 @@ func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Docu
 		if err != nil {
 			return nil, lastRaw, err
 		}
-		if hasLocTokens(doc) || attempt == c.maxRetries-1 {
+		if hasLocTokens(doc) {
 			return doc, lastRaw, nil
 		}
 	}
@@ -298,7 +298,7 @@ func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*doc
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort())
 		prompt := c.systemPrompt
-		if attempt > 0 {
+		if attempt >= 0 {
 			prompt += locFormatReminder
 			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
 		}
@@ -310,7 +310,7 @@ func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*doc
 		if err != nil {
 			return nil, lastRaw, err
 		}
-		if hasLocTokens(doc) || attempt == c.maxRetries-1 {
+		if hasLocTokens(doc) {
 			return doc, lastRaw, nil
 		}
 	}
