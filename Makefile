@@ -1,6 +1,6 @@
 .PHONY: build run clean
 
-BINARY := paddleocrvl.exe
+BINARY := ocr.exe
 
 build:
 	go build -o $(BINARY) ./cmd/ocr/main.go

@@ -15,7 +15,7 @@ A pure Go SDK for running PaddleOCR-VL and other VLM OCR models via LM Studio (O
 ## CLI Installation
 
 ```bash
-go install github.com/schaepher/paddleocrvl/cmd/ocr@latest
+go install github.com/schaepher/ocr/cmd/ocr@latest
 ```
 
 ## CLI Usage
