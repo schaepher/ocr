@@ -13,8 +13,7 @@ import (
 const (
 	// LocGridSize is the discrete coordinate grid size used by PaddleOCR-VL.
 	// LOC tokens range from 0 to LocGridSize-1.
-	// Qwen3-VL may produce values up to ~2000, so we use a generous limit.
-	LocGridSize = 10000
+	LocGridSize = 1000
 
 	// pointsPerBlock is the number of points in a quadrilateral bounding box.
 	pointsPerBlock = 4
