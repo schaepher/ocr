@@ -89,8 +89,8 @@ func HTML(doc *document.Document, imageSrc string) (string, error) {
 
 		if vertical {
 			fmt.Fprintf(&b,
-				"<text x=\"%d\" y=\"0\" writing-mode=\"vertical-rl\" textLength=\"%d\" lengthAdjust=\"spacingAndGlyphs\" font-size=\"%d\" text-anchor=\"middle\">%s</text>",
-				bw/2, bhPad, fw, html.EscapeString(blk.Text))
+				"<text x=\"%d\" y=\"%d\" writing-mode=\"vertical-rl\" textLength=\"%d\" lengthAdjust=\"spacingAndGlyphs\" font-size=\"%d\" text-anchor=\"middle\">%s</text>",
+				bw/2, bh/2, bh, bw, html.EscapeString(blk.Text))
 		} else {
 			fmt.Fprintf(&b,
 				"<text x=\"0\" y=\"%d\" textLength=\"%d\" lengthAdjust=\"spacingAndGlyphs\" font-size=\"%d\">%s</text>",
