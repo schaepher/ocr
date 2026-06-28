@@ -21,7 +21,7 @@ var imageExts = map[string]bool{
 
 func main() {
 	imagePath := flag.String("image", "", "path to image file")
-	imageDir := flag.String("image-dir", ".", "path to directory of images")
+	imageDir := flag.String("image-dir", "", "path to directory of images (default: current dir if no --image)")
 	baseURL := flag.String("base-url", "http://127.0.0.1:1234/v1", "LM Studio API base URL")
 	model := flag.String("model", "PaddleOCR-VL-1.6", "model name")
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
@@ -32,6 +32,10 @@ func main() {
 	if *imagePath != "" && *imageDir != "" {
 		fmt.Fprintln(os.Stderr, "Error: --image and --image-dir are mutually exclusive")
 		os.Exit(1)
+	}
+	// No arguments: default to scanning current directory.
+	if *imagePath == "" && *imageDir == "" {
+		*imageDir = "."
 	}
 
 	if *imagePath != "" {
