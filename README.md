@@ -12,7 +12,43 @@ A pure Go SDK for running PaddleOCR-VL and other VLM OCR models via LM Studio (O
 - **Pipeline Architecture** — extensible for future VLM models (Qwen2.5-VL, InternVL3, etc.)
 - **Streaming Support** — handles SSE streaming responses
 
-## Quick Start
+## CLI Installation
+
+```bash
+go install github.com/schaepher/paddleocrvl/cmd/ocr@latest
+```
+
+## CLI Usage
+
+```bash
+# Basic OCR to Markdown (default)
+ocr --image screenshot.png
+
+# Output as HTML with overlays
+ocr --image screenshot.png --format html
+
+# Other formats
+ocr --image screenshot.png --format json
+ocr --image screenshot.png --format text
+
+# Custom output path
+ocr --image screenshot.png --format html --output result.html
+
+# Custom LM Studio endpoint / model
+ocr --image screenshot.png --base-url http://127.0.0.1:1234/v1 --model PaddleOCR-VL-1.6
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--image` | *(required)* | Path to image file |
+| `--format` | `markdown` | Output format: `markdown`, `json`, `html`, `text` |
+| `--output` | same dir as image, auto extension | Output file path |
+| `--base-url` | `http://127.0.0.1:1234/v1` | LM Studio API base URL |
+| `--model` | `PaddleOCR-VL-1.6` | Model name |
+
+## SDK Usage
 
 ```go
 package main
@@ -37,62 +73,6 @@ func main() {
     // Output as Markdown
     md, _ := paddleocrvl.Markdown(doc)
     fmt.Println(md)
-
-    // Output as JSON
-    json, _ := paddleocrvl.JSON(doc)
-    fmt.Println(json)
-}
-```
-
-## CLI Usage
-
-```bash
-go run examples/main.go --image demo.png --format markdown
-go run examples/main.go --image demo.png --format json
-go run examples/main.go --image demo.png --format html
-go run examples/main.go --image demo.png --format text
-```
-
-## Pipeline API
-
-For more control, use the pipeline builder directly:
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "github.com/schaepher/paddleocrvl/client"
-    "github.com/schaepher/paddleocrvl/decoder/paddleocrvl"
-    "github.com/schaepher/paddleocrvl/layout"
-    "github.com/schaepher/paddleocrvl/output"
-    "github.com/schaepher/paddleocrvl/pipeline"
-)
-
-func main() {
-    ctx := context.Background()
-
-    cl := client.New(
-        client.WithBaseURL("http://127.0.0.1:1234/v1"),
-        client.WithModel("PaddleOCR-VL-1.6"),
-    )
-
-    doc, err := pipeline.New().
-        Use(cl).
-        Decode(paddleocrvl.NewDecoder()).
-        PostProcess(
-            layout.Sort(),
-            layout.MergeParagraph(),
-        ).
-        Image("demo.png").
-        Run(ctx)
-    if err != nil {
-        panic(err)
-    }
-
-    html, _ := output.HTML(doc)
-    fmt.Println(html)
 }
 ```
 
@@ -101,14 +81,15 @@ func main() {
 ```
 ├── paddleocrvl.go          # Convenience API (New().LMStudio().Model().ParseImage())
 ├── client/                 # OpenAI-compatible HTTP client
+├── cmd/
+│   └── ocr/                # CLI binary
 ├── decoder/                # Decoder interface
 │   └── paddleocrvl/        # PaddleOCR-VL token parser
 ├── document/               # Core data types (Document, Block, Polygon)
-├── layout/                 # Layout analysis (sort, paragraph merge, table detect)
+├── layout/                 # Layout analysis (sort, paragraph merge)
 ├── output/                 # Output renderers (Markdown, JSON, HTML, Text)
 ├── pipeline/               # Pipeline orchestrator
-├── prompt/                 # System prompt constants
-└── examples/               # CLI demo
+└── prompt/                 # System prompt constants
 ```
 
 ## How It Works

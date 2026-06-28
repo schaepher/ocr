@@ -3,10 +3,10 @@
 BINARY := paddleocrvl.exe
 
 build:
-	go build -o $(BINARY) ./cmd/main.go
+	go build -o $(BINARY) ./cmd/ocr/main.go
 
 run:
-	go run ./cmd/main.go
+	go run ./cmd/ocr/main.go
 
 clean:
 	rm -f $(BINARY)
