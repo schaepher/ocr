@@ -63,6 +63,7 @@ type Client struct {
 	maxHeight    int // 0 means no slicing
 	overlap      int
 	page         int // 1-based page to OCR, 0 means all
+	saveSlices   bool
 	onProgress   ProgressFunc
 	debugPath    string
 	maxRetries   int
@@ -122,6 +123,12 @@ func (c *Client) Overlap(px int) *Client {
 // Page sets which page (1-based slice index) to OCR. 0 means all pages.
 func (c *Client) Page(n int) *Client {
 	c.page = n
+	return c
+}
+
+// SaveSlices enables saving slice JPEGs and per-slice raw.json/html to disk.
+func (c *Client) SaveSlices(v bool) *Client {
+	c.saveSlices = v
 	return c
 }
 
@@ -187,16 +194,9 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		return doc, nil
 	}
 
-	// Save slices to subdirectory named after the image (without extension).
-	sliceDir, err := imageutil.SaveSlices(slices, imagePath, c.maxHeight, c.overlap)
-	if err != nil {
-		return nil, fmt.Errorf("save slices: %w", err)
-	}
-
 	// Determine which slice indices to process.
 	start, end := 0, len(slices)
 	if c.page > 0 {
-		// --page is 1-based.
 		start = c.page - 1
 		end = c.page
 		if start >= len(slices) {
@@ -204,29 +204,42 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		}
 	}
 
+	var sliceDir string
+	if c.saveSlices {
+		var err error
+		sliceDir, err = imageutil.SaveSlices(slices, imagePath, c.maxHeight, c.overlap)
+		if err != nil {
+			return nil, fmt.Errorf("save slices: %w", err)
+		}
+	}
+
 	var allBlocks []document.Block
 	var entries []rawEntry
-	combinedDebugPath := c.debugPath // original combined raw.json path
+	combinedDebugPath := c.debugPath
 	for i := start; i < end; i++ {
 		sl := slices[i]
 		pageNum := i + 1
 		if c.onProgress != nil {
 			c.onProgress(pageNum, len(slices), sl.Y)
 		}
-		slicePath := filepath.Join(sliceDir, fmt.Sprintf("%03d.jpg", pageNum))
-
-		// Per-slice debug path: each slice gets its own .raw.json.
-		sliceDebugPath := slicePath[:len(slicePath)-4] + ".raw.json"
-
 		sliceSize := image.Point{X: imgW, Y: sl.Height}
-		doc, raw, err := c.parseOne(ctx, slicePath, sliceSize)
 
-		// Save per-slice raw.json (independent replay unit).
-		if sliceDebugPath != "" {
+		var doc *document.Document
+		var raw string
+		var err error
+
+		if c.saveSlices {
+			slicePath := filepath.Join(sliceDir, fmt.Sprintf("%03d.jpg", pageNum))
+			doc, raw, err = c.parseOne(ctx, slicePath, sliceSize)
+
+			// Per-slice raw.json.
+			sliceDebugPath := slicePath[:len(slicePath)-4] + ".raw.json"
 			origPath := c.debugPath
 			c.debugPath = sliceDebugPath
 			c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: sl.Height, Raw: raw}}, imgW, sl.Height)
 			c.debugPath = origPath
+		} else {
+			doc, raw, err = c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i), sliceSize)
 		}
 
 		if err != nil {

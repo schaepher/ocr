@@ -34,6 +34,7 @@ func main() {
 	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing; default 3800 for paddleocrpy)")
 	page := flag.Int("page", 0, "only OCR this page (1-based slice index; 0=all)")
 	overlap := flag.Int("overlap", 200, "vertical overlap between slices in pixels")
+	saveSlices := flag.Bool("save-slices", false, "save slice JPEGs and per-slice raw.json/html to a subdirectory")
 	raw := flag.Bool("raw", true, "save raw model output to .raw.json; replay if exists")
 	flag.Parse()
 
@@ -74,7 +75,7 @@ func main() {
 			fmt.Printf("Output written to %s\n", outPath)
 			return
 		}
-		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw); err != nil {
+		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw, *saveSlices); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -126,7 +127,7 @@ func main() {
 			outPath := deriveOutPath(imgPath, *format)
 			n := done.Add(1)
 			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw); err != nil {
+			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight, *page, *raw, *saveSlices); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 			}
 		}(img)
@@ -135,12 +136,13 @@ func main() {
 	fmt.Printf("Done: %d files processed.\n", total)
 }
 
-func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight, page int, raw bool) error {
+func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight, page int, raw, saveSlices bool) error {
 	cli := ocr.New(prov).
 		LMStudio(baseURL).
 		Model(model).
 		MaxHeight(maxHeight).
-		Page(page)
+		Page(page).
+		SaveSlices(saveSlices)
 	if maxHeight > 0 {
 		cli = cli.OnProgress(func(cur, total, y int) {
 			fmt.Printf("  slice [%d/%d] y=%d\n", cur, total, y)
@@ -199,11 +201,7 @@ func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, fo
 
 // genSliceHTML replays a per-slice raw.json and generates an HTML overlay.
 func genSliceHTML(prov provider.Provider, rawPath, imgPath, htmlPath, baseURL, model string, maxHeight int) {
-	cli := ocr.New(prov).
-		LMStudio(baseURL).
-		Model(model).
-		MaxHeight(maxHeight).
-		Debug(rawPath)
+	cli := ocr.New(prov).LMStudio(baseURL).Model(model).MaxHeight(maxHeight).Debug(rawPath)
 	doc, err := cli.ParseImage(context.Background(), imgPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  slice html %s: %v\n", filepath.Base(rawPath), err)
