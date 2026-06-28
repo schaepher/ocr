@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/schaepher/ocr"
 	"github.com/schaepher/ocr/provider/paddleocrvl"
@@ -59,6 +60,8 @@ func main() {
 
 	sem := make(chan struct{}, *parallel)
 	var wg sync.WaitGroup
+	var done atomic.Int32
+	total := len(images)
 
 	for _, img := range images {
 		wg.Add(1)
@@ -67,15 +70,16 @@ func main() {
 			defer wg.Done()
 			defer func() { <-sem }()
 			outPath := deriveOutPath(imgPath, *format)
-			fmt.Printf("Processing %s ...\n", imgPath)
+			n := done.Add(1)
+			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
 			if err := processImage(imgPath, outPath, *baseURL, *model, *format); err != nil {
-				fmt.Fprintf(os.Stderr, "Error processing %s: %v\n", imgPath, err)
+				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 				return
 			}
-			fmt.Printf("  -> %s\n", outPath)
 		}(img)
 	}
 	wg.Wait()
+	fmt.Printf("Done: %d files processed.\n", total)
 }
 
 // processImage runs OCR on a single image and writes the output file.
