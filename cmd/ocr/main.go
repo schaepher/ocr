@@ -11,7 +11,9 @@ import (
 	"sync/atomic"
 
 	"github.com/schaepher/ocr"
+	"github.com/schaepher/ocr/provider"
 	"github.com/schaepher/ocr/provider/paddleocrvl"
+	"github.com/schaepher/ocr/provider/qwen/qwen3vl"
 )
 
 var imageExts = map[string]bool{
@@ -23,17 +25,28 @@ func main() {
 	imagePath := flag.String("image", "", "path to image file")
 	imageDir := flag.String("image-dir", "", "path to directory of images (default: current dir if no --image)")
 	baseURL := flag.String("base-url", "http://127.0.0.1:1234/v1", "LM Studio API base URL")
-	model := flag.String("model", "PaddleOCR-VL-1.6", "model name")
+	provName := flag.String("provider", "paddleocrvl", "OCR provider: paddleocrvl, qwen3vl")
+	model := flag.String("model", "", "model name (overrides provider default)")
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
 	flag.Parse()
 
+	var prov provider.Provider
+	switch *provName {
+	case "qwen3":
+		prov = qwen3vl.New()
+	default:
+		prov = paddleocrvl.New()
+	}
+	if *model == "" {
+		*model = prov.DefaultModel()
+	}
+
 	if *imagePath != "" && *imageDir != "" {
 		fmt.Fprintln(os.Stderr, "Error: --image and --image-dir are mutually exclusive")
 		os.Exit(1)
 	}
-	// No arguments: default to scanning current directory.
 	if *imagePath == "" && *imageDir == "" {
 		*imageDir = "."
 	}
@@ -43,7 +56,7 @@ func main() {
 		if outPath == "" {
 			outPath = deriveOutPath(*imagePath, *format)
 		}
-		if err := processImage(*imagePath, outPath, *baseURL, *model, *format); err != nil {
+		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -51,7 +64,6 @@ func main() {
 		return
 	}
 
-	// --image-dir mode
 	images, err := walkImages(*imageDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
@@ -76,9 +88,8 @@ func main() {
 			outPath := deriveOutPath(imgPath, *format)
 			n := done.Add(1)
 			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-			if err := processImage(imgPath, outPath, *baseURL, *model, *format); err != nil {
+			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
-				return
 			}
 		}(img)
 	}
@@ -86,9 +97,8 @@ func main() {
 	fmt.Printf("Done: %d files processed.\n", total)
 }
 
-// processImage runs OCR on a single image and writes the output file.
-func processImage(imagePath, outPath, baseURL, model, format string) error {
-	doc, err := ocr.New(paddleocrvl.New()).
+func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string) error {
+	doc, err := ocr.New(prov).
 		LMStudio(baseURL).
 		Model(model).
 		ParseImage(context.Background(), imagePath)
@@ -96,7 +106,6 @@ func processImage(imagePath, outPath, baseURL, model, format string) error {
 		return fmt.Errorf("OCR: %w", err)
 	}
 
-	// Compute imageSrc for HTML output.
 	imageSrc := imagePath
 	if format == "html" {
 		imageSrc = resolveImageSrc(imagePath, outPath)
@@ -120,7 +129,6 @@ func processImage(imagePath, outPath, baseURL, model, format string) error {
 	return os.WriteFile(outPath, []byte(out), 0644)
 }
 
-// walkImages recursively walks dir and returns paths to supported image files.
 func walkImages(dir string) ([]string, error) {
 	var images []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -138,14 +146,12 @@ func walkImages(dir string) ([]string, error) {
 	return images, err
 }
 
-// deriveOutPath returns the output path: same dir, same base name, format extension.
 func deriveOutPath(imagePath, format string) string {
 	ext := formatExt(format)
 	base := strings.TrimSuffix(imagePath, filepath.Ext(imagePath))
 	return base + ext
 }
 
-// formatExt returns the file extension for a given output format.
 func formatExt(format string) string {
 	switch format {
 	case "json":
@@ -159,7 +165,6 @@ func formatExt(format string) string {
 	}
 }
 
-// resolveImageSrc returns the path to use in the HTML img src attribute.
 func resolveImageSrc(imagePath, outPath string) string {
 	absImage, err := filepath.Abs(imagePath)
 	if err != nil {
