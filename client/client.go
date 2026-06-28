@@ -39,14 +39,19 @@ type ImageURL struct {
 
 // ChatRequest is the request body for POST /v1/chat/completions.
 type ChatRequest struct {
-	Model    string    `json:"model"`
-	Messages []Message `json:"messages"`
-	Stream   bool      `json:"stream,omitempty"`
+	Model            string    `json:"model"`
+	Messages         []Message `json:"messages"`
+	Stream           bool      `json:"stream,omitempty"`
+	Temperature      float64   `json:"temperature"`
+	TopP             float64   `json:"top_p"`
+	MaxTokens        int       `json:"max_tokens"`
+	FrequencyPenalty float64   `json:"frequency_penalty"`
+	PresencePenalty  float64   `json:"presence_penalty"`
 }
 
 // ChatResponse is the non-streaming response from /v1/chat/completions.
 type ChatResponse struct {
-	Choices []Choice `json:"choices"`
+	Choices []Choice  `json:"choices"`
 	Error   *APIError `json:"error,omitempty"`
 }
 
@@ -287,18 +292,22 @@ func BuildVisionRequest(model, systemPrompt, userPrompt, imageURI string) *ChatR
 		{Type: "image_url", ImageURL: &ImageURL{URL: imageURI}},
 	}}
 
+	req := &ChatRequest{
+		Model:            model,
+		Messages:         []Message{msg},
+		Temperature:      0,
+		TopP:             1,
+		MaxTokens:        4096,
+		FrequencyPenalty: 0,
+		PresencePenalty:  0,
+	}
+
 	if systemPrompt != "" {
-		return &ChatRequest{
-			Model: model,
-			Messages: []Message{
-				{Role: "system", Content: []ContentPart{{Type: "text", Text: systemPrompt}}},
-				msg,
-			},
+		req.Messages = []Message{
+			{Role: "system", Content: []ContentPart{{Type: "text", Text: systemPrompt}}},
+			msg,
 		}
 	}
 
-	return &ChatRequest{
-		Model:    model,
-		Messages: []Message{msg},
-	}
+	return req
 }

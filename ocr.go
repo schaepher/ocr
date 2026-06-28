@@ -45,7 +45,7 @@ type rawParams struct {
 	ImgHeight int    `json:"imgHeight,omitempty"`
 }
 
-const locFormatReminder = "\nOutput with <|LOC_x|><|LOC_y|> location tokens."
+// const locFormatReminder = "\nOutput with <|LOC_x|><|LOC_y|> location tokens."
 
 type rawEntry struct {
 	Index  int    `json:"index"`
@@ -291,14 +291,12 @@ func (c *Client) parseOne(ctx context.Context, imagePath string, imgSize image.P
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort()).
 			Image(imagePath).
-			ImgSize(imgSize)
-		prompt := c.systemPrompt
+			ImgSize(imgSize).
+			SystemPrompt(c.systemPrompt).
+			UserPrompt("Spotting:")
 		if attempt > 0 {
-			prompt += locFormatReminder
+			pipe.UserPrompt("Spotting:\nOutput with <|LOC_x|><|LOC_y|> location tokens.")
 			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt)
-		}
-		if prompt != "" {
-			pipe.SystemPrompt(prompt)
 		}
 		doc, err := pipe.Run(ctx)
 		lastRaw = pipe.Raw
@@ -323,14 +321,12 @@ func (c *Client) parseSlice(ctx context.Context, data []byte, name string, imgSi
 			Use(cl).
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort()).
-			ImgSize(imgSize)
-		prompt := c.systemPrompt
+			ImgSize(imgSize).
+			SystemPrompt(c.systemPrompt).
+			UserPrompt("Spotting:")
 		if attempt > 0 {
-			prompt += locFormatReminder
+			pipe.UserPrompt("Spotting:\nOutput with <|LOC_x|><|LOC_y|> location tokens.")
 			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt)
-		}
-		if prompt != "" {
-			pipe.SystemPrompt(prompt)
 		}
 		doc, err := pipe.RunWithReader(ctx, bytes.NewReader(data), name)
 		lastRaw = pipe.Raw

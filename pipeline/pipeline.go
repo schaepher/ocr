@@ -17,13 +17,14 @@ import (
 // Pipeline orchestrates the full OCR flow:
 // Image → Client → Decoder → PostProcessors → Document
 type Pipeline struct {
-	cl      *client.Client
-	dec     decoder.Decoder
-	procs   []document.Processor
-	prompt  string
-	imgPath string
-	imgSize image.Point // actual image dimensions for coordinate scaling
-	Raw     string      // raw model response (set after Run / RunWithReader)
+	cl           *client.Client
+	dec          decoder.Decoder
+	procs        []document.Processor
+	systemPrompt string
+	userPrompt   string
+	imgPath      string
+	imgSize      image.Point // actual image dimensions for coordinate scaling
+	Raw          string      // raw model response (set after Run / RunWithReader)
 }
 
 // New creates an empty Pipeline.
@@ -55,9 +56,16 @@ func (p *Pipeline) Image(path string) *Pipeline {
 	return p
 }
 
-// SystemPrompt sets a custom system prompt.
+// SystemPrompt sets the system message sent before the user message.
 func (p *Pipeline) SystemPrompt(s string) *Pipeline {
-	p.prompt = s
+	p.systemPrompt = s
+	return p
+}
+
+// UserPrompt sets the user text sent alongside the image.
+// Defaults to empty (image-only user message).
+func (p *Pipeline) UserPrompt(s string) *Pipeline {
+	p.userPrompt = s
 	return p
 }
 
@@ -90,13 +98,8 @@ func (p *Pipeline) Run(ctx context.Context) (*document.Document, error) {
 		return nil, fmt.Errorf("pipeline: encode image: %w", err)
 	}
 
-	userPrompt := p.prompt
-	if userPrompt == "" {
-		userPrompt = ""
-	}
-
 	// 2. Send API request.
-	req := client.BuildVisionRequest("", "", userPrompt, imageURI)
+	req := client.BuildVisionRequest("", p.systemPrompt, p.userPrompt, imageURI)
 	raw, err := p.cl.Chat(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)
@@ -147,12 +150,7 @@ func (p *Pipeline) RunWithReader(ctx context.Context, r io.Reader, imagePath str
 	encoded := encodeBase64(data)
 	imageURI := fmt.Sprintf("data:%s;base64,%s", mimeType, encoded)
 
-	userPrompt := p.prompt
-	if userPrompt == "" {
-		userPrompt = ""
-	}
-
-	req := client.BuildVisionRequest("", "", userPrompt, imageURI)
+	req := client.BuildVisionRequest("", p.systemPrompt, p.userPrompt, imageURI)
 	raw, err := p.cl.Chat(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)
