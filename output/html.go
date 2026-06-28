@@ -25,7 +25,7 @@ func HTML(doc *document.Document, imageSrc string) (string, error) {
 	b.WriteString(".ocr-page img { display: block; width: 100%; height: auto; }\n")
 	b.WriteString(".ocr-block { position: absolute; overflow: hidden; ")
 	b.WriteString("transition: background 0.15s, box-shadow 0.15s; }\n")
-	b.WriteString(".ocr-block text { fill: #f00; transition: fill 0.15s; ")
+	b.WriteString(".ocr-block text { fill: transparent; transition: fill 0.15s; ")
 	b.WriteString("font-family: sans-serif; }\n")
 	b.WriteString(".ocr-block:hover { background: rgba(255,255,255,0.85); ")
 	b.WriteString("box-shadow: 0 1px 6px rgba(0,0,0,0.25); z-index: 1; }\n")
@@ -61,15 +61,18 @@ func HTML(doc *document.Document, imageSrc string) (string, error) {
 			bh = 1
 		}
 		// Slightly smaller than the viewBox so text doesn't overflow.
-		// Font-size scaled so cap-height fills the block vertically.
-		// cap-height ≈ 0.7 * font-size, so font-size = bh / 0.7.
-		// Use 150% of block height tilted slightly above viewBox to fill.
-		fh := bh * 3 / 2
-		if fh < 8 {
-			fh = 8
+		bhPad := bh - 2
+		if bhPad < 1 {
+			bhPad = 1
 		}
-		// Baseline at bottom of viewBox — ascender overflows top (clipped).
-		yBase := bh
+		fh := bh - 1
+		if fh < 1 {
+			fh = 1
+		}
+		fw := bw - 1
+		if fw < 1 {
+			fw = 1
+		}
 
 		leftPct := float64(bounds.Min.X) / w * 100
 		topPct := float64(bounds.Min.Y) / h * 100
@@ -87,11 +90,11 @@ func HTML(doc *document.Document, imageSrc string) (string, error) {
 		if vertical {
 			fmt.Fprintf(&b,
 				"<text x=\"%d\" y=\"%d\" writing-mode=\"vertical-rl\" textLength=\"%d\" lengthAdjust=\"spacingAndGlyphs\" font-size=\"%d\" text-anchor=\"middle\">%s</text>",
-				bw, yBase-bh/4, bh, bw*3/2, html.EscapeString(blk.Text))
+				bw/2, bh/2, bh, bw, html.EscapeString(blk.Text))
 		} else {
 			fmt.Fprintf(&b,
 				"<text x=\"0\" y=\"%d\" textLength=\"%d\" lengthAdjust=\"spacingAndGlyphs\" font-size=\"%d\">%s</text>",
-				yBase, bw, fh, html.EscapeString(blk.Text))
+				bhPad, bw, fh, html.EscapeString(blk.Text))
 		}
 
 		b.WriteString("</svg>\n")
