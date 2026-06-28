@@ -9,10 +9,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/client"
-	"github.com/schaepher/paddleocrvl/decoder"
-	"github.com/schaepher/paddleocrvl/document"
-	"github.com/schaepher/paddleocrvl/prompt"
+	"github.com/schaepher/ocr/client"
+	"github.com/schaepher/ocr/decoder"
+	"github.com/schaepher/ocr/document"
 )
 
 // Pipeline orchestrates the full OCR flow:
@@ -84,7 +83,7 @@ func (p *Pipeline) Run(ctx context.Context) (*document.Document, error) {
 
 	userPrompt := p.prompt
 	if userPrompt == "" {
-		userPrompt = prompt.SpottingSystemPrompt
+		userPrompt = ""
 	}
 
 	// 2. Send API request.
@@ -140,7 +139,7 @@ func (p *Pipeline) RunWithReader(ctx context.Context, r io.Reader, imagePath str
 
 	userPrompt := p.prompt
 	if userPrompt == "" {
-		userPrompt = prompt.SpottingSystemPrompt
+		userPrompt = ""
 	}
 
 	req := client.BuildVisionRequest("", "", userPrompt, imageURI)

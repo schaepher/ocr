@@ -3,7 +3,7 @@ package output
 import (
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // Markdown renders a Document as plain Markdown text.

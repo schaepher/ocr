@@ -3,7 +3,7 @@ package layout
 import (
 	"testing"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 func TestMergeParagraph(t *testing.T) {

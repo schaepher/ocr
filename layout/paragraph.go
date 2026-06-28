@@ -4,7 +4,7 @@ import (
 	"image"
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // MergeParagraph returns a Processor that merges adjacent blocks

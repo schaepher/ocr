@@ -1,38 +1,43 @@
-package paddleocrvl
+// Package ocr is a Go SDK for running OCR via VLM models (PaddleOCR-VL,
+// Qwen2.5-VL, etc.) through LM Studio or any OpenAI-compatible API.
+//
+// Usage:
+//
+//	doc, err := ocr.New(paddleocrvl.New()).
+//	    LMStudio("http://127.0.0.1:1234/v1").
+//	    ParseImage(ctx, "demo.png")
+//
+//	md, _ := ocr.Markdown(doc)
+package ocr
 
 import (
 	"context"
 	"io"
 
-	"github.com/schaepher/paddleocrvl/client"
-	"github.com/schaepher/paddleocrvl/decoder/paddleocrvl"
-	"github.com/schaepher/paddleocrvl/document"
-	"github.com/schaepher/paddleocrvl/layout"
-	"github.com/schaepher/paddleocrvl/output"
-	"github.com/schaepher/paddleocrvl/pipeline"
+	"github.com/schaepher/ocr/client"
+	"github.com/schaepher/ocr/document"
+	"github.com/schaepher/ocr/layout"
+	"github.com/schaepher/ocr/output"
+	"github.com/schaepher/ocr/pipeline"
+	"github.com/schaepher/ocr/provider"
 )
 
-// Client is the convenient top-level API for PaddleOCR-VL.
-//
-// Usage:
-//
-//	doc, err := paddleocrvl.New().
-//	    LMStudio("http://127.0.0.1:1234/v1").
-//	    Model("PaddleOCR-VL-1.6").
-//	    ParseImage(ctx, "demo.png")
-//
-//	fmt.Println(doc.Markdown())
+// Client is the convenient top-level API for OCR.
 type Client struct {
+	provider     provider.Provider
 	baseURL      string
 	model        string
 	systemPrompt string
 }
 
-// New creates a new Client with default settings.
-func New() *Client {
+// New creates a new Client with the given provider.
+// The provider supplies the default model name, system prompt, and decoder.
+func New(p provider.Provider) *Client {
 	return &Client{
-		baseURL: client.DefaultBaseURL,
-		model:   client.DefaultModel,
+		provider:     p,
+		baseURL:      "http://127.0.0.1:1234/v1",
+		model:        p.DefaultModel(),
+		systemPrompt: p.SystemPrompt(),
 	}
 }
 
@@ -42,13 +47,13 @@ func (c *Client) LMStudio(url string) *Client {
 	return c
 }
 
-// Model sets the model name to use.
+// Model overrides the default model name.
 func (c *Client) Model(name string) *Client {
 	c.model = name
 	return c
 }
 
-// SystemPrompt sets a custom system prompt for the model.
+// SystemPrompt overrides the default system prompt.
 func (c *Client) SystemPrompt(prompt string) *Client {
 	c.systemPrompt = prompt
 	return c
@@ -63,10 +68,8 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 
 	pipe := pipeline.New().
 		Use(cl).
-		Decode(paddleocrvl.NewDecoder()).
-		PostProcess(
-			layout.Sort(),
-		).
+		Decode(c.provider.Decoder()).
+		PostProcess(layout.Sort()).
 		Image(imagePath)
 
 	if c.systemPrompt != "" {
@@ -85,10 +88,8 @@ func (c *Client) ParseImageReader(ctx context.Context, r io.Reader, imagePath st
 
 	pipe := pipeline.New().
 		Use(cl).
-		Decode(paddleocrvl.NewDecoder()).
-		PostProcess(
-			layout.Sort(),
-		)
+		Decode(c.provider.Decoder()).
+		PostProcess(layout.Sort())
 
 	if c.systemPrompt != "" {
 		pipe.SystemPrompt(c.systemPrompt)
@@ -97,8 +98,7 @@ func (c *Client) ParseImageReader(ctx context.Context, r io.Reader, imagePath st
 	return pipe.RunWithReader(ctx, r, imagePath)
 }
 
-// Convenience output methods on Document are provided via the output package.
-// Users can call output.Markdown(doc), output.JSON(doc), etc. directly.
+// Convenience output functions.
 
 // Markdown renders the document as Markdown.
 func Markdown(doc *document.Document) (string, error) {

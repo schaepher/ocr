@@ -4,7 +4,7 @@ import (
 	"image"
 	"testing"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 func TestSort(t *testing.T) {

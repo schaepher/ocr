@@ -9,7 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	paddleocrvl "github.com/schaepher/paddleocrvl"
+	"github.com/schaepher/ocr"
+	"github.com/schaepher/ocr/provider/paddleocrvl"
 )
 
 var imageExts = map[string]bool{
@@ -85,7 +86,7 @@ func main() {
 
 // processImage runs OCR on a single image and writes the output file.
 func processImage(imagePath, outPath, baseURL, model, format string) error {
-	doc, err := paddleocrvl.New().
+	doc, err := ocr.New(paddleocrvl.New()).
 		LMStudio(baseURL).
 		Model(model).
 		ParseImage(context.Background(), imagePath)
@@ -102,13 +103,13 @@ func processImage(imagePath, outPath, baseURL, model, format string) error {
 	var out string
 	switch format {
 	case "json":
-		out, err = paddleocrvl.JSON(doc)
+		out, err = ocr.JSON(doc)
 	case "html":
-		out, err = paddleocrvl.HTML(doc, imageSrc)
+		out, err = ocr.HTML(doc, imageSrc)
 	case "text":
-		out, err = paddleocrvl.Text(doc)
+		out, err = ocr.Text(doc)
 	default:
-		out, err = paddleocrvl.Markdown(doc)
+		out, err = ocr.Markdown(doc)
 	}
 	if err != nil {
 		return fmt.Errorf("output: %w", err)

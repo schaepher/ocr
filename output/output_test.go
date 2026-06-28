@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 func TestJSON(t *testing.T) {

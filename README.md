@@ -56,22 +56,23 @@ package main
 import (
     "context"
     "fmt"
-    paddleocrvl "github.com/schaepher/paddleocrvl"
+
+    "github.com/schaepher/ocr"
+    "github.com/schaepher/ocr/provider/paddleocrvl"
 )
 
 func main() {
     ctx := context.Background()
 
-    doc, err := paddleocrvl.New().
+    doc, err := ocr.New(paddleocrvl.New()).
         LMStudio("http://127.0.0.1:1234/v1").
-        Model("PaddleOCR-VL-1.6").
         ParseImage(ctx, "screenshot.png")
     if err != nil {
         panic(err)
     }
 
     // Output as Markdown
-    md, _ := paddleocrvl.Markdown(doc)
+    md, _ := ocr.Markdown(doc)
     fmt.Println(md)
 }
 ```
@@ -79,7 +80,7 @@ func main() {
 ## Package Structure
 
 ```
-├── paddleocrvl.go          # Convenience API (New().LMStudio().Model().ParseImage())
+├── ocr.go                  # Top-level API (New(provider).ParseImage())
 ├── client/                 # OpenAI-compatible HTTP client
 ├── cmd/
 │   └── ocr/                # CLI binary
@@ -89,7 +90,8 @@ func main() {
 ├── layout/                 # Layout analysis (sort, paragraph merge)
 ├── output/                 # Output renderers (Markdown, JSON, HTML, Text)
 ├── pipeline/               # Pipeline orchestrator
-└── prompt/                 # System prompt constants
+└── provider/               # Provider interface
+    └── paddleocrvl/        # PaddleOCR-VL provider (model, prompt, decoder)
 ```
 
 ## How It Works

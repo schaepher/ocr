@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/decoder"
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/decoder"
+	"github.com/schaepher/ocr/document"
 )
 
 const (

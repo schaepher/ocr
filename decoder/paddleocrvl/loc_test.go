@@ -4,8 +4,8 @@ import (
 	"image"
 	"testing"
 
-	"github.com/schaepher/paddleocrvl/decoder"
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/decoder"
+	"github.com/schaepher/ocr/document"
 )
 
 func TestParseRaw(t *testing.T) {

@@ -3,8 +3,8 @@ package paddleocrvl
 import (
 	"image"
 
-	"github.com/schaepher/paddleocrvl/decoder"
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/decoder"
+	"github.com/schaepher/ocr/document"
 )
 
 // Decoder implements decoder.Decoder for PaddleOCR-VL models.

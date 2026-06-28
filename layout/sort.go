@@ -3,7 +3,7 @@ package layout
 import (
 	"sort"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // YTolerance is the maximum vertical distance (in pixels) for two blocks

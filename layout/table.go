@@ -4,7 +4,7 @@ import (
 	"image"
 	"sort"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // cellBounds stores a block's index and its bounding rectangle.

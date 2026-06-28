@@ -3,7 +3,7 @@ package output
 import (
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // Text renders a Document as plain text with newline separators.

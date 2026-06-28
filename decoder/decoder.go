@@ -4,7 +4,7 @@ import (
 	"errors"
 	"image"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // ErrInvalidLocToken is returned when LOC token sequence is malformed.

@@ -5,7 +5,7 @@ import (
 	"html"
 	"strings"
 
-	"github.com/schaepher/paddleocrvl/document"
+	"github.com/schaepher/ocr/document"
 )
 
 // HTML renders a Document as an HTML overlay.
