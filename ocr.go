@@ -41,6 +41,8 @@ type rawParams struct {
 	Model     string `json:"model"`
 	BaseURL   string `json:"baseURL"`
 	MaxHeight int    `json:"maxHeight,omitempty"`
+	ImgWidth  int    `json:"imgWidth,omitempty"`
+	ImgHeight int    `json:"imgHeight,omitempty"`
 }
 
 const locFormatReminder = "\nOutput with <|LOC_x|><|LOC_y|> location tokens."
@@ -146,12 +148,18 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		}
 	}
 
+	// When maxHeight is 0, process as single image (no slicing).
 	if c.maxHeight <= 0 {
-		doc, raw, err := c.parseOne(ctx, imagePath)
+		imgW, imgH, err := imageutil.GetDimensions(imagePath)
+		if err != nil {
+			return nil, fmt.Errorf("get image dimensions: %w", err)
+		}
+		imgSize := image.Point{X: imgW, Y: imgH}
+		doc, raw, err := c.parseOne(ctx, imagePath, imgSize)
 		if err != nil {
 			return nil, err
 		}
-		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}})
+		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}}, imgW, imgH)
 		return doc, nil
 	}
 
@@ -159,12 +167,15 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 	if err != nil {
 		return nil, fmt.Errorf("slice image: %w", err)
 	}
+
 	if slices == nil {
-		doc, raw, err := c.parseOne(ctx, imagePath)
+		// Image fits within maxHeight, no slicing needed.
+		imgSize := image.Point{X: imgW, Y: imgH}
+		doc, raw, err := c.parseOne(ctx, imagePath, imgSize)
 		if err != nil {
 			return nil, err
 		}
-		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}})
+		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}}, imgW, imgH)
 		return doc, nil
 	}
 
@@ -174,8 +185,12 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		if c.onProgress != nil {
 			c.onProgress(i+1, len(slices), sl.Y)
 		}
-		doc, raw, err := c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i))
+		sliceSize := image.Point{X: imgW, Y: sl.Height}
+		doc, raw, err := c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i), sliceSize)
 		if err != nil {
+			// Save partial results before returning error.
+			entries = append(entries, rawEntry{Index: i, Y: sl.Y, Height: sl.Height, Raw: raw})
+			c.saveDebug(entries, imgW, imgH)
 			return nil, fmt.Errorf("slice %d: %w", i, err)
 		}
 		entries = append(entries, rawEntry{Index: i, Y: sl.Y, Height: sl.Height, Raw: raw})
@@ -188,14 +203,14 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 			allBlocks = append(allBlocks, blk)
 		}
 	}
-	c.saveDebug(entries)
+	c.saveDebug(entries, imgW, imgH)
 
 	doc := &document.Document{Width: imgW, Height: imgH, Blocks: allBlocks}
 	doc, err = layout.Sort()(doc)
 	return doc, err
 }
 
-func (c *Client) saveDebug(entries []rawEntry) {
+func (c *Client) saveDebug(entries []rawEntry, imgW, imgH int) {
 	if c.debugPath == "" || len(entries) == 0 {
 		return
 	}
@@ -205,6 +220,8 @@ func (c *Client) saveDebug(entries []rawEntry) {
 			Model:     c.model,
 			BaseURL:   c.baseURL,
 			MaxHeight: c.maxHeight,
+			ImgWidth:  imgW,
+			ImgHeight: imgH,
 		},
 		Data: entries,
 	}
@@ -234,7 +251,15 @@ func (c *Client) replayRawStrings(raws []string, imagePath string) (*document.Do
 
 func (c *Client) replayRaws(rf rawFile) (*document.Document, error) {
 	dec := c.provider.Decoder()
-	imgSize := image.Point{X: 1920, Y: 1080}
+	imgW := rf.Params.ImgWidth
+	imgH := rf.Params.ImgHeight
+	if imgW == 0 {
+		imgW = 1920
+	}
+	if imgH == 0 {
+		imgH = 1080
+	}
+	imgSize := image.Point{X: imgW, Y: imgH}
 	var allBlocks []document.Block
 	for _, e := range rf.Data {
 		doc, err := dec.Decode(e.Raw, imgSize)
@@ -250,11 +275,11 @@ func (c *Client) replayRaws(rf rawFile) (*document.Document, error) {
 			allBlocks = append(allBlocks, blk)
 		}
 	}
-	doc := &document.Document{Width: 1920, Height: 1080, Blocks: allBlocks}
+	doc := &document.Document{Width: imgW, Height: imgH, Blocks: allBlocks}
 	return layout.Sort()(doc)
 }
 
-func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Document, string, error) {
+func (c *Client) parseOne(ctx context.Context, imagePath string, imgSize image.Point) (*document.Document, string, error) {
 	var lastRaw string
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
 		cl := client.New(
@@ -265,11 +290,12 @@ func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Docu
 			Use(cl).
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort()).
-			Image(imagePath)
+			Image(imagePath).
+			ImgSize(imgSize)
 		prompt := c.systemPrompt
-		if attempt >= 0 {
+		if attempt > 0 {
 			prompt += locFormatReminder
-			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
+			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt)
 		}
 		if prompt != "" {
 			pipe.SystemPrompt(prompt)
@@ -286,7 +312,7 @@ func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Docu
 	return nil, lastRaw, fmt.Errorf("no LOC tokens after %d retries", c.maxRetries)
 }
 
-func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*document.Document, string, error) {
+func (c *Client) parseSlice(ctx context.Context, data []byte, name string, imgSize image.Point) (*document.Document, string, error) {
 	var lastRaw string
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
 		cl := client.New(
@@ -296,11 +322,12 @@ func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*doc
 		pipe := pipeline.New().
 			Use(cl).
 			Decode(c.provider.Decoder()).
-			PostProcess(layout.Sort())
+			PostProcess(layout.Sort()).
+			ImgSize(imgSize)
 		prompt := c.systemPrompt
-		if attempt >= 0 {
+		if attempt > 0 {
 			prompt += locFormatReminder
-			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
+			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt)
 		}
 		if prompt != "" {
 			pipe.SystemPrompt(prompt)

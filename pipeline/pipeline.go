@@ -22,7 +22,8 @@ type Pipeline struct {
 	procs   []document.Processor
 	prompt  string
 	imgPath string
-	Raw     string // raw model response (set after Run / RunWithReader)
+	imgSize image.Point // actual image dimensions for coordinate scaling
+	Raw     string      // raw model response (set after Run / RunWithReader)
 }
 
 // New creates an empty Pipeline.
@@ -57,6 +58,13 @@ func (p *Pipeline) Image(path string) *Pipeline {
 // SystemPrompt sets a custom system prompt.
 func (p *Pipeline) SystemPrompt(s string) *Pipeline {
 	p.prompt = s
+	return p
+}
+
+// ImgSize sets the actual image dimensions for coordinate scaling.
+// If not set, {1920, 1080} is used as fallback.
+func (p *Pipeline) ImgSize(sz image.Point) *Pipeline {
+	p.imgSize = sz
 	return p
 }
 
@@ -98,11 +106,11 @@ func (p *Pipeline) Run(ctx context.Context) (*document.Document, error) {
 		return nil, fmt.Errorf("pipeline: empty response from API")
 	}
 
-	// 3. Decode.
-	// Estimate image size from file. This is a best-effort dimension;
-	// the client doesn't have access to actual pixel dimensions.
-	// Users should explicitly set dimensions via the decoder if needed.
-	imgSize := image.Point{X: 1920, Y: 1080} // fallback
+	// 3. Decode with actual image dimensions.
+	imgSize := p.imgSize
+	if imgSize.X == 0 && imgSize.Y == 0 {
+		imgSize = image.Point{X: 1920, Y: 1080} // fallback
+	}
 
 	doc, err := p.dec.Decode(raw, imgSize)
 	if err != nil {
@@ -154,7 +162,10 @@ func (p *Pipeline) RunWithReader(ctx context.Context, r io.Reader, imagePath str
 		return nil, fmt.Errorf("pipeline: empty response from API")
 	}
 
-	imgSize := image.Point{X: 1920, Y: 1080}
+	imgSize := p.imgSize
+	if imgSize.X == 0 && imgSize.Y == 0 {
+		imgSize = image.Point{X: 1920, Y: 1080}
+	}
 	doc, err := p.dec.Decode(raw, imgSize)
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: decode: %w", err)

@@ -4,16 +4,31 @@ package imageutil
 import (
 	"bytes"
 	"image"
-	"image/jpeg"
-	_ "image/png"
 	_ "image/gif"
+	"image/jpeg"
 	_ "image/jpeg"
+	_ "image/png"
 	"os"
 
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
+
+// GetDimensions returns the width and height of an image file.
+func GetDimensions(path string) (int, int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
+}
 
 // Slice represents one horizontal strip of a sliced image.
 type Slice struct {
