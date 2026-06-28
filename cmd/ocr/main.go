@@ -26,7 +26,7 @@ func main() {
 	imagePath := flag.String("image", "", "path to image file")
 	imageDir := flag.String("image-dir", "", "path to directory of images (default: current dir if no --image)")
 	baseURL := flag.String("base-url", "http://127.0.0.1:1234/v1", "LM Studio API base URL")
-	provName := flag.String("provider", "paddleocrvl", "OCR provider: paddleocrvl, qwen3vl")
+	provName := flag.String("provider", "paddleocrvl", "OCR provider: paddleocrvl, qwen3vl, paddleocrpy")
 	model := flag.String("model", "", "model name (overrides provider default)")
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
