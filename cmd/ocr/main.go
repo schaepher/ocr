@@ -20,20 +20,14 @@ var imageExts = map[string]bool{
 
 func main() {
 	imagePath := flag.String("image", "", "path to image file")
-	imageDir := flag.String("image-dir", "", "path to directory of images")
+	imageDir := flag.String("image-dir", ".", "path to directory of images")
 	baseURL := flag.String("base-url", "http://127.0.0.1:1234/v1", "LM Studio API base URL")
 	model := flag.String("model", "PaddleOCR-VL-1.6", "model name")
-	format := flag.String("format", "markdown", "output format: markdown, json, html, text")
+	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
 	flag.Parse()
 
-	if *imagePath == "" && *imageDir == "" {
-		fmt.Fprintln(os.Stderr, "Usage: ocr --image <path> [flags]")
-		fmt.Fprintln(os.Stderr, "       ocr --image-dir <path> [--parallel N] [flags]")
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
 	if *imagePath != "" && *imageDir != "" {
 		fmt.Fprintln(os.Stderr, "Error: --image and --image-dir are mutually exclusive")
 		os.Exit(1)
@@ -81,7 +75,7 @@ func main() {
 			fmt.Printf("  -> %s\n", outPath)
 		}(img)
 	}
-		wg.Wait()
+	wg.Wait()
 }
 
 // processImage runs OCR on a single image and writes the output file.
