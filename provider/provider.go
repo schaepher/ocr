@@ -9,6 +9,8 @@ import (
 
 // Provider is the interface that OCR model providers must implement.
 type Provider interface {
+	// Name returns the provider name (e.g. "paddleocrvl", "qwen3vl").
+	Name() string
 	// DefaultModel returns the default model name (e.g. "PaddleOCR-VL-1.6").
 	DefaultModel() string
 	// SystemPrompt returns the system prompt for the OCR task.

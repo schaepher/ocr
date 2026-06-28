@@ -12,6 +12,7 @@ type Provider struct{}
 
 func New() *Provider { return &Provider{} }
 
+func (p *Provider) Name() string             { return "qwen3vl" }
 func (p *Provider) DefaultModel() string     { return "qwen/qwen3-vl-8b" }
 func (p *Provider) SystemPrompt() string     { return SpottingSystemPrompt }
 func (p *Provider) Decoder() decoder.Decoder { return decoderPVL.NewDecoder() }

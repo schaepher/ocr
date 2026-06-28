@@ -13,8 +13,11 @@ package ocr
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"image"
 	"io"
+	"os"
 
 	"github.com/schaepher/ocr/client"
 	"github.com/schaepher/ocr/document"
@@ -29,6 +32,23 @@ import (
 // ProgressFunc is called with the current slice index and total during slicing.
 type ProgressFunc func(current, total int, y int)
 
+type rawFile struct {
+	Params rawParams  `json:"params"`
+	Data   []rawEntry `json:"data"`
+}
+type rawParams struct {
+	Provider  string `json:"provider"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"baseURL"`
+	MaxHeight int    `json:"maxHeight,omitempty"`
+}
+type rawEntry struct {
+	Index  int    `json:"index"`
+	Y      int    `json:"y"`
+	Height int    `json:"height"`
+	Raw    string `json:"raw"`
+}
+
 type Client struct {
 	provider     provider.Provider
 	baseURL      string
@@ -37,6 +57,8 @@ type Client struct {
 	maxHeight    int // 0 means no slicing
 	overlap      int
 	onProgress   ProgressFunc
+	debugPath    string
+	maxRetries   int
 }
 
 // New creates a new Client with the given provider.
@@ -48,6 +70,7 @@ func New(p provider.Provider) *Client {
 		model:        p.DefaultModel(),
 		systemPrompt: p.SystemPrompt(),
 		overlap:      200,
+		maxRetries:   3,
 	}
 }
 
@@ -76,6 +99,13 @@ func (c *Client) MaxHeight(h int) *Client {
 	return c
 }
 
+// MaxRetries sets the max retries when the model output has no LOC tokens.
+// Default is 3.
+func (c *Client) MaxRetries(n int) *Client {
+	c.maxRetries = n
+	return c
+}
+
 // Overlap sets the vertical overlap between adjacent slices.
 func (c *Client) Overlap(px int) *Client {
 	c.overlap = px
@@ -88,12 +118,38 @@ func (c *Client) OnProgress(fn ProgressFunc) *Client {
 	return c
 }
 
+// Debug enables debug mode: raw model output is saved to path (JSON array).
+// If path already exists, the model is skipped and cached raw output is replayed.
+func (c *Client) Debug(path string) *Client {
+	c.debugPath = path
+	return c
+}
+
 // ParseImage runs OCR on an image file and returns a structured Document.
 // If MaxHeight is set and the image exceeds it, the image is split into
 // overlapping horizontal slices, each processed separately, then merged.
 func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Document, error) {
+	// Debug replay: load cached raw outputs and decode them.
+	if c.debugPath != "" {
+		if data, err := os.ReadFile(c.debugPath); err == nil {
+			var rf rawFile
+			if err := json.Unmarshal(data, &rf); err == nil && len(rf.Data) > 0 {
+				return c.replayRaws(rf)
+			}
+			var raws []string
+			if err := json.Unmarshal(data, &raws); err == nil {
+				return c.replayRawStrings(raws, imagePath)
+			}
+		}
+	}
+
 	if c.maxHeight <= 0 {
-		return c.parseOne(ctx, imagePath)
+		doc, raw, err := c.parseOne(ctx, imagePath)
+		if err != nil {
+			return nil, err
+		}
+		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}})
+		return doc, nil
 	}
 
 	slices, imgW, imgH, err := imageutil.SliceImage(imagePath, c.maxHeight, c.overlap)
@@ -101,20 +157,25 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 		return nil, fmt.Errorf("slice image: %w", err)
 	}
 	if slices == nil {
-		// Image fits within maxHeight.
-		return c.parseOne(ctx, imagePath)
+		doc, raw, err := c.parseOne(ctx, imagePath)
+		if err != nil {
+			return nil, err
+		}
+		c.saveDebug([]rawEntry{{Index: 0, Y: 0, Height: doc.Height, Raw: raw}})
+		return doc, nil
 	}
 
 	var allBlocks []document.Block
+	var entries []rawEntry
 	for i, sl := range slices {
 		if c.onProgress != nil {
 			c.onProgress(i+1, len(slices), sl.Y)
 		}
-		doc, err := c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i))
+		doc, raw, err := c.parseSlice(ctx, sl.Data, fmt.Sprintf("slice_%d.jpg", i))
 		if err != nil {
 			return nil, fmt.Errorf("slice %d: %w", i, err)
 		}
-		// Offset block Y coordinates by this slice's position.
+		entries = append(entries, rawEntry{Index: i, Y: sl.Y, Height: sl.Height, Raw: raw})
 		for _, blk := range doc.Blocks {
 			if !blk.Polygon.IsZero() {
 				for j := range blk.Polygon.Points {
@@ -124,49 +185,132 @@ func (c *Client) ParseImage(ctx context.Context, imagePath string) (*document.Do
 			allBlocks = append(allBlocks, blk)
 		}
 	}
+	c.saveDebug(entries)
 
-	doc := &document.Document{
-		Width:  imgW,
-		Height: imgH,
-		Blocks: allBlocks,
-	}
-	// Re-sort merged blocks.
+	doc := &document.Document{Width: imgW, Height: imgH, Blocks: allBlocks}
 	doc, err = layout.Sort()(doc)
-	if err != nil {
-		return nil, err
-	}
-	return doc, nil
+	return doc, err
 }
 
-func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Document, error) {
-	cl := client.New(
-		client.WithBaseURL(c.baseURL),
-		client.WithModel(c.model),
-	)
-	pipe := pipeline.New().
-		Use(cl).
-		Decode(c.provider.Decoder()).
-		PostProcess(layout.Sort()).
-		Image(imagePath)
-	if c.systemPrompt != "" {
-		pipe.SystemPrompt(c.systemPrompt)
+func (c *Client) saveDebug(entries []rawEntry) {
+	if c.debugPath == "" || len(entries) == 0 {
+		return
 	}
-	return pipe.Run(ctx)
+	rf := rawFile{
+		Params: rawParams{
+			Provider:  c.provider.Name(),
+			Model:     c.model,
+			BaseURL:   c.baseURL,
+			MaxHeight: c.maxHeight,
+		},
+		Data: entries,
+	}
+	data, _ := json.MarshalIndent(rf, "", "  ")
+	os.WriteFile(c.debugPath, data, 0644)
 }
 
-func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*document.Document, error) {
-	cl := client.New(
-		client.WithBaseURL(c.baseURL),
-		client.WithModel(c.model),
-	)
-	pipe := pipeline.New().
-		Use(cl).
-		Decode(c.provider.Decoder()).
-		PostProcess(layout.Sort())
-	if c.systemPrompt != "" {
-		pipe.SystemPrompt(c.systemPrompt)
+func (c *Client) replayRawStrings(raws []string, imagePath string) (*document.Document, error) {
+	w, h := 1920, 1080
+	if slices, _, imgH, err := imageutil.SliceImage(imagePath, c.maxHeight, c.overlap); err == nil && slices != nil {
+		h = imgH
 	}
-	return pipe.RunWithReader(ctx, bytes.NewReader(data), name)
+
+	imgSize := image.Point{X: w, Y: h}
+	dec := c.provider.Decoder()
+	var allBlocks []document.Block
+	for i, raw := range raws {
+		doc, err := dec.Decode(raw, imgSize)
+		if err != nil {
+			return nil, fmt.Errorf("decode cached slice %d: %w", i, err)
+		}
+		allBlocks = append(allBlocks, doc.Blocks...)
+	}
+	doc := &document.Document{Width: w, Height: h, Blocks: allBlocks}
+	return layout.Sort()(doc)
+}
+
+func (c *Client) replayRaws(rf rawFile) (*document.Document, error) {
+	dec := c.provider.Decoder()
+	imgSize := image.Point{X: 1920, Y: 1080}
+	var allBlocks []document.Block
+	for _, e := range rf.Data {
+		doc, err := dec.Decode(e.Raw, imgSize)
+		if err != nil {
+			return nil, fmt.Errorf("decode cached slice %d: %w", e.Index, err)
+		}
+		for _, blk := range doc.Blocks {
+			if !blk.Polygon.IsZero() {
+				for j := range blk.Polygon.Points {
+					blk.Polygon.Points[j].Y += e.Y
+				}
+			}
+			allBlocks = append(allBlocks, blk)
+		}
+	}
+	doc := &document.Document{Width: 1920, Height: 1080, Blocks: allBlocks}
+	return layout.Sort()(doc)
+}
+
+func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Document, string, error) {
+	var lastRaw string
+	for attempt := 0; attempt < c.maxRetries; attempt++ {
+		cl := client.New(
+			client.WithBaseURL(c.baseURL),
+			client.WithModel(c.model),
+		)
+		pipe := pipeline.New().
+			Use(cl).
+			Decode(c.provider.Decoder()).
+			PostProcess(layout.Sort()).
+			Image(imagePath)
+		if c.systemPrompt != "" {
+			pipe.SystemPrompt(c.systemPrompt)
+		}
+		doc, err := pipe.Run(ctx)
+		lastRaw = pipe.Raw
+		if err != nil {
+			return nil, lastRaw, err
+		}
+		if hasLocTokens(doc) || attempt == c.maxRetries-1 {
+			return doc, lastRaw, nil
+		}
+	}
+	return nil, lastRaw, fmt.Errorf("no LOC tokens after %d retries", c.maxRetries)
+}
+
+func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*document.Document, string, error) {
+	var lastRaw string
+	for attempt := 0; attempt < c.maxRetries; attempt++ {
+		cl := client.New(
+			client.WithBaseURL(c.baseURL),
+			client.WithModel(c.model),
+		)
+		pipe := pipeline.New().
+			Use(cl).
+			Decode(c.provider.Decoder()).
+			PostProcess(layout.Sort())
+		if c.systemPrompt != "" {
+			pipe.SystemPrompt(c.systemPrompt)
+		}
+		doc, err := pipe.RunWithReader(ctx, bytes.NewReader(data), name)
+		lastRaw = pipe.Raw
+		if err != nil {
+			return nil, lastRaw, err
+		}
+		if hasLocTokens(doc) || attempt == c.maxRetries-1 {
+			return doc, lastRaw, nil
+		}
+	}
+	return nil, lastRaw, fmt.Errorf("no LOC tokens after %d retries", c.maxRetries)
+}
+
+func hasLocTokens(doc *document.Document) bool {
+	for _, blk := range doc.Blocks {
+		if !blk.Polygon.IsZero() {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseImageReader runs OCR on an image from an io.Reader.

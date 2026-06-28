@@ -50,6 +50,9 @@ func SliceImage(path string, maxHeight, overlap int) ([]Slice, int, int, error) 
 		h := maxHeight
 		if y+h > imgH {
 			h = imgH - y
+			if h <= overlap {
+				break
+			}
 		}
 
 		// Crop the strip.
@@ -67,7 +70,7 @@ func SliceImage(path string, maxHeight, overlap int) ([]Slice, int, int, error) 
 		})
 
 		y += h - overlap
-		if y >= imgH {
+		if y >= imgH || h <= overlap {
 			break
 		}
 	}

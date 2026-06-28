@@ -31,6 +31,7 @@ func main() {
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
 	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing)")
+	raw := flag.Bool("raw", true, "save raw model output to .raw.json; replay if exists")
 	flag.Parse()
 
 	var prov provider.Provider
@@ -57,7 +58,7 @@ func main() {
 		if outPath == "" {
 			outPath = deriveOutPath(*imagePath, *format)
 		}
-		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight); err != nil {
+		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *raw); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -89,7 +90,7 @@ func main() {
 			outPath := deriveOutPath(imgPath, *format)
 			n := done.Add(1)
 			fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
-			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight); err != nil {
+			if err := processImage(prov, imgPath, outPath, *baseURL, *model, *format, *maxHeight, *raw); err != nil {
 				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
 			}
 		}(img)
@@ -98,7 +99,7 @@ func main() {
 	fmt.Printf("Done: %d files processed.\n", total)
 }
 
-func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight int) error {
+func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, format string, maxHeight int, raw bool) error {
 	cli := ocr.New(prov).
 		LMStudio(baseURL).
 		Model(model).
@@ -107,6 +108,11 @@ func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, fo
 		cli = cli.OnProgress(func(cur, total, y int) {
 			fmt.Printf("  slice [%d/%d] y=%d\n", cur, total, y)
 		})
+	}
+	if raw {
+		ext := filepath.Ext(imagePath)
+		base := strings.TrimSuffix(imagePath, ext)
+		cli = cli.Debug(base + ".raw.json")
 	}
 	doc, err := cli.ParseImage(context.Background(), imagePath)
 	if err != nil {

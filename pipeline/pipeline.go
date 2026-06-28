@@ -22,6 +22,7 @@ type Pipeline struct {
 	procs   []document.Processor
 	prompt  string
 	imgPath string
+	Raw     string // raw model response (set after Run / RunWithReader)
 }
 
 // New creates an empty Pipeline.
@@ -92,6 +93,7 @@ func (p *Pipeline) Run(ctx context.Context) (*document.Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)
 	}
+	p.Raw = raw
 	if raw == "" {
 		return nil, fmt.Errorf("pipeline: empty response from API")
 	}
@@ -147,6 +149,7 @@ func (p *Pipeline) RunWithReader(ctx context.Context, r io.Reader, imagePath str
 	if err != nil {
 		return nil, fmt.Errorf("pipeline: api call: %w", err)
 	}
+	p.Raw = raw
 	if raw == "" {
 		return nil, fmt.Errorf("pipeline: empty response from API")
 	}

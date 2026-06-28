@@ -12,6 +12,7 @@ import (
 // mockProvider implements provider.Provider for tests.
 type mockProvider struct{}
 
+func (p *mockProvider) Name() string             { return "mock" }
 func (p *mockProvider) DefaultModel() string     { return "test-model" }
 func (p *mockProvider) SystemPrompt() string     { return "test-prompt" }
 func (p *mockProvider) Decoder() decoder.Decoder { return &mockDecoder{} }

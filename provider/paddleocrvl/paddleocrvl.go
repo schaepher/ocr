@@ -16,6 +16,7 @@ func New() *Provider {
 	return &Provider{}
 }
 
+func (p *Provider) Name() string             { return "paddleocrvl" }
 func (p *Provider) DefaultModel() string     { return "PaddleOCR-VL-1.6" }
 func (p *Provider) SystemPrompt() string     { return SpottingSystemPrompt }
 func (p *Provider) Decoder() decoder.Decoder { return decoderPVL.NewDecoder() }
