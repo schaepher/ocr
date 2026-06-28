@@ -42,6 +42,9 @@ type rawParams struct {
 	BaseURL   string `json:"baseURL"`
 	MaxHeight int    `json:"maxHeight,omitempty"`
 }
+
+const locFormatReminder = "\nOutput with <|LOC_x|><|LOC_y|> location tokens."
+
 type rawEntry struct {
 	Index  int    `json:"index"`
 	Y      int    `json:"y"`
@@ -263,8 +266,13 @@ func (c *Client) parseOne(ctx context.Context, imagePath string) (*document.Docu
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort()).
 			Image(imagePath)
-		if c.systemPrompt != "" {
-			pipe.SystemPrompt(c.systemPrompt)
+		prompt := c.systemPrompt
+		if attempt > 0 {
+			prompt += locFormatReminder
+			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
+		}
+		if prompt != "" {
+			pipe.SystemPrompt(prompt)
 		}
 		doc, err := pipe.Run(ctx)
 		lastRaw = pipe.Raw
@@ -289,8 +297,13 @@ func (c *Client) parseSlice(ctx context.Context, data []byte, name string) (*doc
 			Use(cl).
 			Decode(c.provider.Decoder()).
 			PostProcess(layout.Sort())
-		if c.systemPrompt != "" {
-			pipe.SystemPrompt(c.systemPrompt)
+		prompt := c.systemPrompt
+		if attempt > 0 {
+			prompt += locFormatReminder
+			fmt.Fprintf(os.Stderr, "Retrying with format reminder (attempt %d)...\n", attempt+1)
+		}
+		if prompt != "" {
+			pipe.SystemPrompt(prompt)
 		}
 		doc, err := pipe.RunWithReader(ctx, bytes.NewReader(data), name)
 		lastRaw = pipe.Raw
