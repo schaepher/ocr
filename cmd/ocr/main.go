@@ -12,6 +12,7 @@ import (
 
 	"github.com/schaepher/ocr"
 	"github.com/schaepher/ocr/provider"
+	"github.com/schaepher/ocr/provider/paddleocrpy"
 	"github.com/schaepher/ocr/provider/paddleocrvl"
 	"github.com/schaepher/ocr/provider/qwen/qwen3vl"
 )
@@ -30,18 +31,24 @@ func main() {
 	format := flag.String("format", "html", "output format: markdown, json, html, text")
 	outputPath := flag.String("output", "", "output file path (--image only; default: same dir as image, auto extension)")
 	parallel := flag.Int("parallel", 1, "max concurrent conversions (--image-dir only)")
-	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing)")
+	maxHeight := flag.Int("max-height", 0, "max image height before slicing (0=no slicing; default 3800 for paddleocrpy)")
+	overlap := flag.Int("overlap", 200, "vertical overlap between slices in pixels")
 	raw := flag.Bool("raw", true, "save raw model output to .raw.json; replay if exists")
 	flag.Parse()
+
+	ctx := context.Background()
 
 	var prov provider.Provider
 	switch *provName {
 	case "qwen3":
 		prov = qwen3vl.New()
+	case "paddleocrpy":
+		// Local PaddleOCR Python — no VLM provider needed.
+		// Handled separately in processImage.
 	default:
 		prov = paddleocrvl.New()
 	}
-	if *model == "" {
+	if *model == "" && prov != nil {
 		*model = prov.DefaultModel()
 	}
 
@@ -57,6 +64,14 @@ func main() {
 		outPath := *outputPath
 		if outPath == "" {
 			outPath = deriveOutPath(*imagePath, *format)
+		}
+		if *provName == "paddleocrpy" {
+			if err := processImagePaddleOCR(ctx, *imagePath, outPath, *format, *maxHeight, *overlap); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("Output written to %s\n", outPath)
+			return
 		}
 		if err := processImage(prov, *imagePath, outPath, *baseURL, *model, *format, *maxHeight, *raw); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -80,6 +95,26 @@ func main() {
 	var wg sync.WaitGroup
 	var done atomic.Int32
 	total := len(images)
+
+	if *provName == "paddleocrpy" {
+		for _, img := range images {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(imgPath string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				outPath := deriveOutPath(imgPath, *format)
+				n := done.Add(1)
+				fmt.Printf("Processing [%d/%d] %s\n", n, total, filepath.Base(imgPath))
+				if err := processImagePaddleOCR(ctx, imgPath, outPath, *format, *maxHeight, *overlap); err != nil {
+					fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
+				}
+			}(img)
+		}
+		wg.Wait()
+		fmt.Printf("Done: %d files processed.\n", total)
+		return
+	}
 
 	for _, img := range images {
 		wg.Add(1)
@@ -123,6 +158,38 @@ func processImage(prov provider.Provider, imagePath, outPath, baseURL, model, fo
 	if format == "html" {
 		imageSrc = resolveImageSrc(imagePath, outPath)
 	}
+
+	var out string
+	switch format {
+	case "json":
+		out, err = ocr.JSON(doc)
+	case "html":
+		out, err = ocr.HTML(doc, imageSrc)
+	case "text":
+		out, err = ocr.Text(doc)
+	default:
+		out, err = ocr.Markdown(doc)
+	}
+	if err != nil {
+		return fmt.Errorf("output: %w", err)
+	}
+
+	return os.WriteFile(outPath, []byte(out), 0644)
+}
+
+func processImagePaddleOCR(ctx context.Context, imagePath, outPath, format string, maxHeight, overlap int) error {
+	if maxHeight <= 0 {
+		maxHeight = 3800 // default to avoid resize distortion
+	}
+	doc, err := paddleocrpy.Run(ctx, imagePath, maxHeight, overlap,
+		func(cur, total, y int) {
+			fmt.Printf("  slice [%d/%d] y=%d\n", cur, total, y)
+		})
+	if err != nil {
+		return fmt.Errorf("paddleocrpy: %w", err)
+	}
+
+	imageSrc := resolveImageSrc(imagePath, outPath)
 
 	var out string
 	switch format {
